@@ -120,6 +120,20 @@ class CurvePoint {
     data[31] |= 64;
     return data;
   }
+
+  /// Returns [a] * [b] mod l, where l = 2^252 + 27742317777372353535851937790883648493.
+  static Uint8List multiplyScalars(Uint8List a, Uint8List b) {
+    /// Copied from end of [TweetNacl.crypto_sign] code.
+    Int64List r = Int64List(64);
+    for (int i = 0; i < 32; i++) {
+      for (int j = 0; j < 32; j++) {
+        r[i + j] += (a[i] & 0xff) * (b[j] & 0xff).toInt();
+      }
+    }
+    Uint8List ret = Uint8List(32);
+    TweetNaclFast.modL(ret, 0, r);
+    return ret;
+  }
 }
 
 /// Returned by [generateJointPublicKey].
@@ -182,5 +196,6 @@ PrivateKey generateJointPrivateKey(
   Uint8List digest = Hash.sha512(privateKey.data.sublist(0, 32));
   CurvePoint.clampScalarBits(digest);
 
-  return null;
+  Uint8List jointPrivateKey = CurvePoint.multiplyScalars(digest, primeDigest);
+  return PrivateKey(Uint8List.fromList(jointPrivateKey + Uint8List(32)));
 }

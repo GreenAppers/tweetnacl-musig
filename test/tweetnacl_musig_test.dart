@@ -46,6 +46,8 @@ void main() {
         'xK8i62dTBuOVOBtdwSJpbpXKoTaZ+k3OPdPhWI5nMko=');
 
     PrivateKey jointPriv1 = generateJointPrivateKey(publicKeys, priv1, 0);
-    //expect(base64.encode(jointPriv1.data), 'k1it5L3rRSjpo5zWn1nCDUKFpwy3sRW1ZlfW2eOphgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==');
+    PrivateKey jointPriv2 = generateJointPrivateKey(publicKeys, priv2, 1);
+    expect(base64.encode(jointPriv1.data), 'k1it5L3rRSjpo5zWn1nCDUKFpwy3sRW1ZlfW2eOphgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==');
+    expect(base64.encode(jointPriv2.data), 'Ic704M42z2eH0IEaG2xrxxMF8z5oadZ8q+3WGPYRwwwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==');
   });
 }
