@@ -1,0 +1,17 @@
+name: tweetnacl_musig
+version: 1.0.0+0
+description: Library for ed25519 multi-signatures using tweetnacl.
+author: Green Appers, Inc. <greenappers@gmail.com>
+homepage: https://github.com/GreenAppers/ed25519-musig
+
+environment:
+  sdk: ">=2.1.0 <3.0.0"
+
+dependencies:
+  meta: ^1.1.6
+  tweetnacl:
+    path: ../tweetnacl-dart
+
+dev_dependencies:
+  build_runner: ^1.4.0
+  test: ^1.6.5
