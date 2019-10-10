@@ -1,5 +1,5 @@
-// Copyright 2019 tweetnacl-musig developers
-// Use of this source code is governed by a MIT-style license that can be found in the LICENSE file.
+/// Copyright 2019 tweetnacl-musig developers
+/// Use of this source code is governed by a MIT-style license that can be found in the LICENSE file.
 
 /// TweetNaCl: A crypto library in 100 tweets
 /// Bernstein, D. (2013) https://tweetnacl.cr.yp.to/tweetnacl-20131229.pdf
@@ -40,6 +40,9 @@ class PrivateKey {
   PrivateKey(this.data) {
     if (data.length != privateKeySize) throw FormatException();
   }
+
+  PrivateKey.fromKeyPair(Uint8List privateKey, Uint8List publicKey)
+      : this(Uint8List.fromList(privateKey + publicKey));
 
   /// Creates a [PrivateKey] from a secret.
   PrivateKey.fromSeed(Uint8List seed)
@@ -178,7 +181,7 @@ JointPublicKey generateJointPublicKey(List<PublicKey> publicKeys) {
   return ret;
 }
 
-PrivateKey generateJointPrivateKey(
+Uint8List generateJointPrivateKey(
     List<PublicKey> publicKeys, PrivateKey privateKey, int n) {
   // L = H(P1 || P2 || ... || Pn)
   final Uint8List jointHash = Hash.sha512(
@@ -195,7 +198,20 @@ PrivateKey generateJointPrivateKey(
   // here we calculate H(L || Pi) * xi
   Uint8List digest = Hash.sha512(privateKey.data.sublist(0, 32));
   CurvePoint.clampScalarBits(digest);
+  return CurvePoint.multiplyScalars(digest, primeDigest);
+}
 
-  Uint8List jointPrivateKey = CurvePoint.multiplyScalars(digest, primeDigest);
-  return PrivateKey(Uint8List.fromList(jointPrivateKey + Uint8List(32)));
+Uint8List generateNonce(PrivateKey privateKey, Uint8List message) {
+  final Uint8List digest = Hash.sha512(privateKey.data.sublist(0, 32));
+  final Uint8List messageDigest =
+      Hash.sha512(Uint8List.fromList(digest.sublist(32) + message));
+  TweetNaclFast.reduce(messageDigest);
+  return messageDigest;
+}
+
+// H(R1 + R2 + ... + Rn || J(P1, P2, ..., Pn) || m) = e
+// si = ri + e * x'i
+Uint8List jointSign(PrivateKey privateKey, PrivateKey jointPrivateKey,
+    List<CurvePoint> noncePoints, Uint8List message) {
+  return null;
 }

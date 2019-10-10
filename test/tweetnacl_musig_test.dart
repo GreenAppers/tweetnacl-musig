@@ -1,5 +1,5 @@
-// Copyright 2019 tweetnacl-musig developers
-// Use of this source code is governed by a MIT-style license that can be found in the LICENSE file.
+/// Copyright 2019 tweetnacl-musig developers
+/// Use of this source code is governed by a MIT-style license that can be found in the LICENSE file.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -45,9 +45,33 @@ void main() {
     expect(base64.encode(jointKey.jointPublicKey.data),
         'xK8i62dTBuOVOBtdwSJpbpXKoTaZ+k3OPdPhWI5nMko=');
 
-    PrivateKey jointPriv1 = generateJointPrivateKey(publicKeys, priv1, 0);
-    PrivateKey jointPriv2 = generateJointPrivateKey(publicKeys, priv2, 1);
-    expect(base64.encode(jointPriv1.data), 'k1it5L3rRSjpo5zWn1nCDUKFpwy3sRW1ZlfW2eOphgQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==');
-    expect(base64.encode(jointPriv2.data), 'Ic704M42z2eH0IEaG2xrxxMF8z5oadZ8q+3WGPYRwwwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==');
+    PrivateKey jointPriv1 = PrivateKey.fromKeyPair(
+        generateJointPrivateKey(publicKeys, priv1, 0),
+        jointKey.jointPublicKey.data);
+    PrivateKey jointPriv2 = PrivateKey.fromKeyPair(
+        generateJointPrivateKey(publicKeys, priv2, 1),
+        jointKey.jointPublicKey.data);
+    expect(base64.encode(jointPriv1.data),
+        'k1it5L3rRSjpo5zWn1nCDUKFpwy3sRW1ZlfW2eOphgTEryLrZ1MG45U4G13BImlulcqhNpn6Tc490+FYjmcySg==');
+    expect(base64.encode(jointPriv2.data),
+        'Ic704M42z2eH0IEaG2xrxxMF8z5oadZ8q+3WGPYRwwzEryLrZ1MG45U4G13BImlulcqhNpn6Tc490+FYjmcySg==');
+
+    Uint8List message = utf8.encode('Hello, world!');
+    CurvePoint noncePoint1 =
+        CurvePoint.fromScalar(generateNonce(priv1, message));
+    CurvePoint noncePoint2 =
+        CurvePoint.fromScalar(generateNonce(priv2, message));
+    List<CurvePoint> noncePoints = <CurvePoint>[noncePoint1, noncePoint2];
+    expect(base64.encode(noncePoint1.pack()),
+        'ncPXqaIC/a3hItLZusUD7Flcn5+FTsluh5Y3wjQxhj4=');
+    expect(base64.encode(noncePoint2.pack()),
+        's4jZio8iIvJcNJW9a5dazXOKSNGMsz/r61Yir7i6mew=');
+
+    Uint8List sig1 = jointSign(priv1, jointPriv1, noncePoints, message);
+    Uint8List sig2 = jointSign(priv2, jointPriv2, noncePoints, message);
+    /*expect(base64.encode(sig1),
+        'ncPXqaIC/a3hItLZusUD7Flcn5+FTsluh5Y3wjQxhj7CUVSyYtKksFL8TSAEyQoOJyHSYjItlcWxJujrvunJDw==');
+    expect(base64.encode(sig2),
+        's4jZio8iIvJcNJW9a5dazXOKSNGMsz/r61Yir7i6meyRY+waZBsZ/q2Kt1PgLKEvUAwKeXwqYsnFmD9y+eHYAw==');*/
   });
 }
