@@ -11,6 +11,7 @@
 library tweetnacl_musig;
 
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:convert/convert.dart';
@@ -19,6 +20,10 @@ import 'package:tweetnacl/tweetnacl.dart';
 
 const int publicKeySize = 32;
 const int privateKeySize = 64;
+const int signatureSize = 64;
+const int adaptorSize = 32;
+const int curvePointSize = 32;
+const int scalarSize = 32;
 
 /// Ed25519 public key, 32 bytes.
 @immutable
@@ -51,6 +56,9 @@ class PrivateKey {
   /// The second half of an Ed25519 private key is the public key.
   PublicKey getPublicKey() =>
       PublicKey(data.buffer.asUint8List(privateKeySize - publicKeySize));
+
+  Uint8List getPrivateKeyData() =>
+      data.buffer.asUint8List(0, privateKeySize - publicKeySize);
 }
 
 /// Point representation in extended twisted Edwards coordinates.
@@ -71,6 +79,11 @@ class CurvePoint {
           Int64List.fromList(x.z),
           Int64List.fromList(x.t)
         ];
+
+  /// Unpacks negative RFC 8032 encoded ed25519 [point].
+  CurvePoint.unpackneg(Uint8List point) {
+    if (TweetNaclFast.unpackneg(data, point) != 0) throw FormatException();
+  }
 
   /// Unpacks RFC 8032 encoded ed25519 [point].
   CurvePoint.unpack(Uint8List point) {
@@ -109,7 +122,7 @@ class CurvePoint {
   }
 
   Uint8List pack() {
-    Uint8List ret = Uint8List(32);
+    Uint8List ret = Uint8List(curvePointSize);
     TweetNaclFast.pack(ret, data);
     return ret;
   }
@@ -124,25 +137,54 @@ class CurvePoint {
     return data;
   }
 
-  /// Returns [a] * [b] mod l, where l = 2^252 + 27742317777372353535851937790883648493.
-  static Uint8List multiplyScalars(Uint8List a, Uint8List b) {
+  /// Returns ([a] * [b] + [c]) mod l, where l = 2^252 + 27742317777372353535851937790883648493.
+  static Uint8List multiplyAddScalars(Uint8List a, Uint8List b,
+      [Uint8List c, bool negateC = false]) {
     /// Copied from end of [TweetNacl.crypto_sign] code.
     Int64List r = Int64List(64);
-    for (int i = 0; i < 32; i++) {
-      for (int j = 0; j < 32; j++) {
+    if (c != null) {
+      if (negateC) {
+        for (int i = 0; i < scalarSize; i++) {
+          r[i] = 0 - (c[i] & 0xff).toInt();
+        }
+      } else {
+        for (int i = 0; i < scalarSize; i++) {
+          r[i] = (c[i] & 0xff).toInt();
+        }
+      }
+    }
+    for (int i = 0; i < scalarSize; i++) {
+      for (int j = 0; j < scalarSize; j++) {
         r[i + j] += (a[i] & 0xff) * (b[j] & 0xff).toInt();
       }
     }
-    Uint8List ret = Uint8List(32);
+    Uint8List ret = Uint8List(scalarSize);
     TweetNaclFast.modL(ret, 0, r);
     return ret;
   }
+
+  static Uint8List addScalars(Uint8List a, Uint8List b,
+      [bool negateB = false]) {
+    final Uint8List one = Uint8List(32);
+    one[0] = 1;
+    return multiplyAddScalars(a, one, b, negateB);
+  }
+
+  static Uint8List subtractScalars(Uint8List a, Uint8List b) =>
+      addScalars(a, b, true);
 }
 
 /// Returned by [generateJointPublicKey].
 class JointPublicKey {
   PublicKey jointPublicKey;
   List<PublicKey> primeKeys = List<PublicKey>();
+}
+
+/// Returned from [generateAdaptor].
+class Adaptor {
+  Uint8List secret;
+  CurvePoint point;
+  Adaptor(this.secret, this.point);
 }
 
 /// Takes n pubkeys: P1, P2, ..., Pn
@@ -169,14 +211,16 @@ JointPublicKey generateJointPublicKey(List<PublicKey> publicKeys) {
 
     // P'i = H(L || Pi) * Pi - here we calculate P'i
     primeKeys.add(CurvePoint.unpack(publicKey.data)
-        .scalarMultiply(primeDigest.sublist(0, 32)));
+        .scalarMultiply(primeDigest.sublist(0, scalarSize)));
     ret.primeKeys.add(PublicKey(primeKeys.last.pack()));
   }
 
   // as well as J = Sum(P'i)
   CurvePoint jointPublicKey = primeKeys[0].add(primeKeys[1]);
+  for (int i = 2; i < primeKeys.length; i++) {
+    jointPublicKey = jointPublicKey.add(primeKeys[i]);
+  }
 
-  /// TODO handle publicKeys.length > 2
   ret.jointPublicKey = PublicKey(jointPublicKey.pack());
   return ret;
 }
@@ -196,13 +240,13 @@ Uint8List generateJointPrivateKey(
   TweetNaclFast.reduce(primeDigest);
 
   // here we calculate H(L || Pi) * xi
-  Uint8List digest = Hash.sha512(privateKey.data.sublist(0, 32));
+  Uint8List digest = Hash.sha512(privateKey.getPrivateKeyData());
   CurvePoint.clampScalarBits(digest);
-  return CurvePoint.multiplyScalars(digest, primeDigest);
+  return CurvePoint.multiplyAddScalars(digest, primeDigest);
 }
 
 Uint8List generateNonce(PrivateKey privateKey, Uint8List message) {
-  final Uint8List digest = Hash.sha512(privateKey.data.sublist(0, 32));
+  final Uint8List digest = Hash.sha512(privateKey.getPrivateKeyData());
   final Uint8List messageDigest =
       Hash.sha512(Uint8List.fromList(digest.sublist(32) + message));
   TweetNaclFast.reduce(messageDigest);
@@ -213,5 +257,107 @@ Uint8List generateNonce(PrivateKey privateKey, Uint8List message) {
 // si = ri + e * x'i
 Uint8List jointSign(PrivateKey privateKey, PrivateKey jointPrivateKey,
     List<CurvePoint> noncePoints, Uint8List message) {
-  return null;
+  assert(noncePoints.length >= 2);
+
+  // R = Sum(Ri)
+  CurvePoint summedR = noncePoints[0].add(noncePoints[1]);
+  for (int i = 2; i < noncePoints.length; i++) {
+    summedR = summedR.add(noncePoints[i]);
+  }
+
+  // e = H(R1 + R2 + ... + Rn || J(P1, P2, ..., Pn) || m)
+  final Uint8List e = Hash.sha512(Uint8List.fromList(
+      summedR.pack() + jointPrivateKey.getPublicKey().data + message));
+  TweetNaclFast.reduce(e);
+
+  final Uint8List r = generateNonce(privateKey, message);
+  final Uint8List s =
+      CurvePoint.multiplyAddScalars(e, jointPrivateKey.getPrivateKeyData(), r);
+  return Uint8List.fromList(CurvePoint.fromScalar(r).pack() + s);
+}
+
+// s_agg = s_A + s_B
+// R_agg = R_A + R_B
+Uint8List addSignatures(Uint8List signature1, Uint8List signature2) {
+  // s1 * 1 + s2 = s1 + s2
+  final Uint8List s =
+      CurvePoint.addScalars(signature1.sublist(32), signature2.sublist(32));
+
+  final CurvePoint R = CurvePoint.unpack(signature1.sublist(0, 32))
+      .add(CurvePoint.unpack(signature2.sublist(0, 32)));
+
+  return Uint8List.fromList(R.pack() + s);
+}
+
+Adaptor generateAdaptor(Uint8List seed) {
+  Uint8List adaptor = Hash.sha512(seed);
+  CurvePoint.clampScalarBits(adaptor);
+  TweetNaclFast.reduce(adaptor);
+  adaptor = adaptor.sublist(0, adaptorSize);
+  CurvePoint x = CurvePoint.fromScalar(adaptor);
+  return Adaptor(adaptor, x);
+}
+
+// e = H(R_A + R_B + T || J(A, B) || m)
+// s_A = r_A + e * x_A'
+// s_B' = r_B + e * x_B'
+Uint8List jointSignWithAdaptor(
+    PrivateKey privateKey,
+    PrivateKey jointPrivateKey,
+    CurvePoint noncePoint1,
+    CurvePoint noncePoint2,
+    CurvePoint adaptorPoint,
+    Uint8List message) {
+  List<CurvePoint> noncePoints = <CurvePoint>[
+    noncePoint1,
+    noncePoint2,
+    adaptorPoint
+  ];
+  return jointSign(privateKey, jointPrivateKey, noncePoints, message);
+}
+
+// e = H(R_A + R_B + T || J(A, B) || m)
+// s_B' * G ?= R_B + e * P_B'
+// So R_B ?= S_B' - e * P_B'?
+bool verifyAdaptorSignature(
+    PublicKey publicKey,
+    PublicKey jointPublicKey,
+    CurvePoint noncePoint1,
+    CurvePoint noncePoint2,
+    CurvePoint adaptorPoint,
+    Uint8List message,
+    Uint8List sig) {
+  CurvePoint summedR = noncePoint1.add(noncePoint2);
+  summedR = summedR.add(adaptorPoint);
+
+  // e = H(R_A + R_B + T || J(A, B) || m)
+  final Uint8List e = Hash.sha512(
+      Uint8List.fromList(summedR.pack() + jointPublicKey.data + message));
+  TweetNaclFast.reduce(e);
+
+  // e * -P_B'
+  CurvePoint hramA = CurvePoint.unpackneg(publicKey.data).scalarMultiply(e);
+
+  // R_B = - H(R_A+R_B+T,P_B',m)P_B' + s_b'*BASE_POINT
+  CurvePoint R = hramA.add(CurvePoint.fromScalar(sig.sublist(32)));
+  return equalUint8List(R.pack(), sig.sublist(0, 32));
+}
+
+/// Returns [n] random bytes.
+Uint8List randBytes(int n) {
+  final Random generator = Random.secure();
+  final Uint8List random = Uint8List(n);
+  for (int i = 0; i < random.length; i++) {
+    random[i] = generator.nextInt(255);
+  }
+  return random;
+}
+
+/// Returns true if [x] and [y] are equivalent.
+bool equalUint8List(Uint8List x, Uint8List y) {
+  if (x.length != y.length) return false;
+  for (int i = 0; i < x.length; ++i) {
+    if (x[i] != y[i]) return false;
+  }
+  return true;
 }
