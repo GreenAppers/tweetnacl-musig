@@ -31,6 +31,10 @@ void main() {
         Signature(null, priv.data).sign(message).buffer.asUint8List(0, 64);
     expect(Signature(priv.publicKey.data, null).detached_verify(message, sig),
         true);
+    expect(
+        equalUint8List(sig.sublist(0, 32),
+            CurvePoint.fromScalar(generateNonce(priv, message)).pack()),
+        true);
 
     final Uint8List wrongMessage = utf8.encode('wrong message');
     expect(

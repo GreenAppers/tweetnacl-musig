@@ -44,6 +44,7 @@ class PrivateKey {
     if (data.length != privateKeySize) throw FormatException();
   }
 
+  /// Constructs a [PrivateKey] by combining the two halves.
   PrivateKey.fromKeyPair(Uint8List privateKey, Uint8List publicKey)
       : this(Uint8List.fromList(privateKey + publicKey));
 
@@ -55,11 +56,12 @@ class PrivateKey {
   PublicKey get publicKey =>
       PublicKey(data.buffer.asUint8List(privateKeySize - publicKeySize));
 
+  /// The first half of an Ed25519 private key is the secret scalar.
   Uint8List get privateKeyData =>
       data.buffer.asUint8List(0, privateKeySize - publicKeySize);
 }
 
-/// Schnorr signature: (R,s) = (rG, r + H(X,R,m)x).
+/// Ed25519 Schnorr signature: (R,s) = (rG, r + H(X,R,m)x).
 @immutable
 class SchnorrSignature {
   final Uint8List data;
@@ -70,7 +72,10 @@ class SchnorrSignature {
     if (data.length != signatureSize) throw FormatException();
   }
 
+  /// The [R] component of this Schnorr signature.
   Uint8List get R => data.buffer.asUint8List(0, curvePointSize);
+
+  /// The [s] component of this Schnorr signature.
   Uint8List get s => data.buffer.asUint8List(curvePointSize);
 }
 
@@ -117,9 +122,16 @@ class CurvePoint {
     TweetNaclFast.scalarbase(data, n, 0);
   }
 
+  /// The [x] component of this [CurvePoint].
   Int64List get x => data[0];
+
+  /// The [y] component of this [CurvePoint].
   Int64List get y => data[1];
+
+  /// The [z] component of this [CurvePoint].
   Int64List get z => data[2];
+
+  /// The [t] component of this [CurvePoint].
   Int64List get t => data[3];
 
   /// Returns result of scalar multiplication of [CurvePoint] by integer [n].
@@ -136,6 +148,7 @@ class CurvePoint {
     return r;
   }
 
+  /// Returns RFC 8032 encoding of this point.
   Uint8List pack() {
     Uint8List ret = Uint8List(curvePointSize);
     TweetNaclFast.pack(ret, data);
@@ -178,9 +191,11 @@ class CurvePoint {
     return ret;
   }
 
+  /// Multiplies [a] and [b] modulo the prime subgroup order.
   static Uint8List multiplyScalars(Uint8List a, Uint8List b) =>
       multiplyAddScalars(a, b);
 
+  /// Adds [a] and [b] modulo the prime subgroup order.
   static Uint8List addScalars(Uint8List a, Uint8List b,
       [bool negateB = false]) {
     final Uint8List one = Uint8List(32);
@@ -188,6 +203,7 @@ class CurvePoint {
     return multiplyAddScalars(a, one, b, negateB);
   }
 
+  /// Subtracts [a] and [b] modulo the prime subgroup order.
   static Uint8List subtractScalars(Uint8List a, Uint8List b) =>
       addScalars(a, b, true);
 }
@@ -247,9 +263,12 @@ class JointKey {
   }
 }
 
-/// Returned from [generateAdaptor].
+/// https://joinmarket.me/blog/blog/flipping-the-scriptless-script-on-schnorr/
 class Adaptor {
+  /// t = random scalar.
   Uint8List secret;
+
+  /// T = tG.
   CurvePoint point;
 
   Adaptor.generate(Uint8List seed) {
@@ -281,14 +300,14 @@ SchnorrSignature jointSign(PrivateKey privateKey, JointKey jointKey,
   assert(noncePoints.length >= 2);
 
   /// Call R the sum of the Ri points.
-  CurvePoint summedR = noncePoints[0].add(noncePoints[1]);
+  CurvePoint sumR = noncePoints[0].add(noncePoints[1]);
   for (int i = 2; i < noncePoints.length; i++) {
-    summedR = summedR.add(noncePoints[i]);
+    sumR = sumR.add(noncePoints[i]);
   }
 
-  /// e = H(X,R,m).
-  final Uint8List e = Hash.sha512(Uint8List.fromList(
-      summedR.pack() + jointKey.jointPublicKey.data + message));
+  /// [e] = H(X,R,m).
+  final Uint8List e = Hash.sha512(
+      Uint8List.fromList(sumR.pack() + jointKey.jointPublicKey.data + message));
   TweetNaclFast.reduce(e);
 
   /// Each MuSig signer computes si = ri + H(X,R,m)H(L,Xi)xi.
@@ -310,9 +329,11 @@ SchnorrSignature addSignatures(
   return SchnorrSignature(R.pack(), s);
 }
 
-// e = H(R_A + R_B + T || J(A, B) || m)
-// s_A = r_A + e * x_A'
-// s_B' = r_B + e * x_B'
+/// The [jointSign()] signature with [adaptorPoint] as an extra signer:
+///   s = r + t + H(X,R+T,m)H(L,Xi)xi.
+/// Then the adaptor signature is:
+///   s' = s - t.
+/// If we verify only t is missing, then signing the message must reveal t.
 SchnorrSignature jointSignWithAdaptor(
     PrivateKey privateKey,
     JointKey jointKey,
@@ -328,9 +349,8 @@ SchnorrSignature jointSignWithAdaptor(
   return jointSign(privateKey, jointKey, noncePoints, message);
 }
 
-// e = H(R_A + R_B + T || J(A, B) || m)
-// s_B' * G ?= R_B + e * P_B'
-// So R_B ?= S_B' - e * P_B'?
+/// An adaptor signature is a triplet (s', R, T) satisfying:
+/// s'G = Ri + H(X,R+T,m)H(L,Xi)Xi.
 bool verifyAdaptorSignature(
     PublicKey primeKey,
     PublicKey jointPublicKey,
@@ -339,20 +359,20 @@ bool verifyAdaptorSignature(
     CurvePoint adaptorPoint,
     Uint8List message,
     SchnorrSignature sig) {
-  CurvePoint summedR = noncePoint1.add(noncePoint2);
-  summedR = summedR.add(adaptorPoint);
+  CurvePoint sumTR = noncePoint1.add(noncePoint2);
+  sumTR = sumTR.add(adaptorPoint);
 
-  // e = H(R_A + R_B + T || J(A, B) || m)
+  /// [e] = H(X,R+T,m).
   final Uint8List e = Hash.sha512(
-      Uint8List.fromList(summedR.pack() + jointPublicKey.data + message));
+      Uint8List.fromList(sumTR.pack() + jointPublicKey.data + message));
   TweetNaclFast.reduce(e);
 
-  // e * -P_B'
-  CurvePoint hramA = CurvePoint.unpackneg(primeKey.data).scalarMultiply(e);
+  /// [ePrime] = -H(X,R+T,m)H(L,Xi)Xi
+  CurvePoint ePrime = CurvePoint.unpackneg(primeKey.data).scalarMultiply(e);
 
-  // R_B = - H(R_A+R_B+T,P_B',m)P_B' + s_b'*BASE_POINT
-  CurvePoint R = hramA.add(CurvePoint.fromScalar(sig.s));
-  return equalUint8List(R.pack(), sig.R);
+  /// [ri] = ePrime + s'G
+  CurvePoint ri = ePrime.add(CurvePoint.fromScalar(sig.s));
+  return equalUint8List(ri.pack(), sig.R);
 }
 
 /// Returns [n] random bytes.
