@@ -1,0 +1,36 @@
+os: linux
+language: dart
+
+addons:
+  apt:
+    # Flutter dependencies
+    sources:
+      - ubuntu-toolchain-r-test
+    packages:
+      - libstdc++6
+
+before_install:
+  - echo $TRAVIS_OS_NAME
+  - echo ${HOME}
+  - echo ${TRAVIS_BUILD_DIR}
+  - echo "repo_token:" $COVERALLS_REPO_TOKEN > .coveralls.yml
+  - gem install coveralls-lcov
+  - git clone https://github.com/flutter/flutter.git -b stable --depth 1 ${HOME}/flutter
+  - ${HOME}/flutter/bin/flutter doctor -v
+  - ${HOME}/flutter/bin/flutter packages get
+  - ${HOME}/flutter/bin/flutter pub global activate coverage
+
+script:
+  - ${HOME}/flutter/bin/flutter pub run test
+  - ./test-coverage.sh
+
+after_success:
+  - echo "success"
+  - coveralls-lcov coverage/lcov.info
+
+after_failure:
+  - echo "failure"
+
+env:
+  global:
+    secure: bHBD5NDp4aIFPZ4gEo/jb4Nw3Ii/6oPi0mODAhiAuVs14CMQYNAIstOYDTB04H6lVxjFm+qF47Yf+nHgXE1bP9D0lezLnEQDekgMbzoAsvxSV8IjmIQwNY0RYKIJ3sSPC7xQSRpMPaLIytTItc6a5M9yBQE2FVmMtrIFK2P5K64vWxZXCjGDTJ98EI42mgrMaGeKJqdMl6J6W4GbVC4TPz130k4+gHtLPcJ+Gf527x5bRGIw1yIfmM5s2qSOWDYPGdDKLrdw43DXlXoXnJ+0TVyzerdJ3E10tZ1dbAh6P3tnPdvP/PfLuxFtWtXhJv+EjHoApbnVc2++YqF16ieByUGKsNhrjMoscRNOhQmAqoo1SfXDq2yjGMev1twfk0eNShjGRsePUDhav6UH5syUaxZwEHxblNZAU8xMCl/3EpddLBznt1yt6zyfNvh29LPuxdTnQl6tA77D+PIaNjJrvjrcGrcyCZ21TA7pG3P5fxTlII3JNKwM4RDSi89+bA6cX+gXUai/9EB0BU7tIgvBhp3jTLdYzek8qE9k3/kf8O0e3X8eo7HNyGeBIfHu2jhcFgPNX4Yw3a1YlGJUyio7UsMbi/lNJvuhNBtJaM/Bcq2bWqiFAfwqys9o2taewJpzquVx8TY/XlHqqRWcstFt4UEM1lKu6loAGN/tuJ4RStY=
