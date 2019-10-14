@@ -277,7 +277,7 @@ class Adaptor {
 
     /// Without this [TweetNaclFast.reduce()] the resulting [x] would be equivalent
     /// to the [KeyPair.publicKey] returned from [Signature.keyPair_fromSeed()].
-    /// But then we couldn't recover either adaptor from subtracting their sum.
+    /// But then we couldn't recover the adaptor by subtraction from the signature.
     TweetNaclFast.reduce(adaptor);
 
     secret = adaptor.sublist(0, adaptorSize);
@@ -296,7 +296,7 @@ Uint8List generateNonce(PrivateKey privateKey, Uint8List message) {
 
 /// Each signer computes si = ri + H(X,R,m)H(L,Xi)xi.
 SchnorrSignature jointSign(PrivateKey privateKey, JointKey jointKey,
-    List<CurvePoint> noncePoints, Uint8List message) {
+    List<CurvePoint> noncePoints, Uint8List r, Uint8List message) {
   assert(noncePoints.length >= 2);
 
   /// Call R the sum of the Ri points.
@@ -311,7 +311,6 @@ SchnorrSignature jointSign(PrivateKey privateKey, JointKey jointKey,
   TweetNaclFast.reduce(e);
 
   /// Each MuSig signer computes si = ri + H(X,R,m)H(L,Xi)xi.
-  final Uint8List r = generateNonce(privateKey, message);
   final CurvePoint R = CurvePoint.fromScalar(r);
   final Uint8List s = CurvePoint.multiplyAddScalars(
       e, jointKey.primePrivateKey.privateKeyData, r);
@@ -340,13 +339,14 @@ SchnorrSignature jointSignWithAdaptor(
     CurvePoint noncePoint1,
     CurvePoint noncePoint2,
     CurvePoint adaptorPoint,
+    Uint8List r,
     Uint8List message) {
   List<CurvePoint> noncePoints = <CurvePoint>[
     noncePoint1,
     noncePoint2,
     adaptorPoint
   ];
-  return jointSign(privateKey, jointKey, noncePoints, message);
+  return jointSign(privateKey, jointKey, noncePoints, r, message);
 }
 
 /// An adaptor signature is a triplet (s', R, T) satisfying:

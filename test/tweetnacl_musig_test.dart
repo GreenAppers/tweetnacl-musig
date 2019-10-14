@@ -126,10 +126,10 @@ void main() {
         true);
 
     final Uint8List message = utf8.encode('Hello, world!');
-    final CurvePoint noncePoint1 =
-        CurvePoint.fromScalar(generateNonce(priv1, message));
-    final CurvePoint noncePoint2 =
-        CurvePoint.fromScalar(generateNonce(priv2, message));
+    final Uint8List nonceSecret1 = generateNonce(priv1, message);
+    final Uint8List nonceSecret2 = generateNonce(priv2, message);
+    final CurvePoint noncePoint1 = CurvePoint.fromScalar(nonceSecret1);
+    final CurvePoint noncePoint2 = CurvePoint.fromScalar(nonceSecret2);
     List<CurvePoint> noncePoints = <CurvePoint>[noncePoint1, noncePoint2];
     expect(base64.encode(noncePoint1.pack()),
         'ncPXqaIC/a3hItLZusUD7Flcn5+FTsluh5Y3wjQxhj4=');
@@ -157,9 +157,9 @@ void main() {
         true);
 
     final SchnorrSignature sig1 =
-        jointSign(priv1, jointKey1, noncePoints, message);
+        jointSign(priv1, jointKey1, noncePoints, nonceSecret1, message);
     final SchnorrSignature sig2 =
-        jointSign(priv2, jointKey2, noncePoints, message);
+        jointSign(priv2, jointKey2, noncePoints, nonceSecret2, message);
     expect(base64.encode(sig1.data),
         'ncPXqaIC/a3hItLZusUD7Flcn5+FTsluh5Y3wjQxhj7CUVSyYtKksFL8TSAEyQoOJyHSYjItlcWxJujrvunJDw==');
     expect(base64.encode(sig2.data),
@@ -174,10 +174,10 @@ void main() {
         true);
 
     final Adaptor adaptor = Adaptor.generate(randBytes(32));
-    final SchnorrSignature adaptorSig1 = jointSignWithAdaptor(
-        priv1, jointKey1, noncePoint1, noncePoint2, adaptor.point, message);
-    final SchnorrSignature adaptorSig2 = jointSignWithAdaptor(
-        priv2, jointKey2, noncePoint1, noncePoint2, adaptor.point, message);
+    final SchnorrSignature adaptorSig1 = jointSignWithAdaptor(priv1, jointKey1,
+        noncePoint1, noncePoint2, adaptor.point, nonceSecret1, message);
+    final SchnorrSignature adaptorSig2 = jointSignWithAdaptor(priv2, jointKey2,
+        noncePoint1, noncePoint2, adaptor.point, nonceSecret2, message);
     expect(
         verifyAdaptorSignature(
             jointKey1.primePublicKeys[0],
