@@ -1,4 +1,4 @@
-# tweetnacl-musig [![Build Status](https://travis-ci.org/GreenAppers/tweetnacl-musig.svg?branch=master)](https://travis-ci.org/GreenAppers/tweetnacl-musig) [![Coverage Status](https://coveralls.io/repos/github/GreenAppers/tweetnacl-musig/badge.svg)](https://coveralls.io/github/GreenAppers/tweetnacl-musig)
+# TweetNaCl-MuSig [![Build Status](https://travis-ci.org/GreenAppers/tweetnacl-musig.svg?branch=master)](https://travis-ci.org/GreenAppers/tweetnacl-musig) [![Coverage Status](https://coveralls.io/repos/github/GreenAppers/tweetnacl-musig/badge.svg)](https://coveralls.io/github/GreenAppers/tweetnacl-musig)
 
 TweetNaCl: A crypto library in 100 tweets
 Bernstein, D. (2013) https://tweetnacl.cr.yp.to/tweetnacl-20131229.pdf
@@ -13,3 +13,13 @@ Flipping the scriptless script on Schnorr
 Gibson, A. (2017) https://joinmarket.me/blog/blog/flipping-the-scriptless-script-on-schnorr/
 
 Based off the implementation by Mark Huetsch: https://github.com/HyperspaceApp/ed25519
+
+# Examples
+
+## Payment channel
+
+https://github.com/GreenAppers/cruzawl/blob/master/test/cruz_test.dart#L399
+
+## Atomic swap
+
+https://github.com/GreenAppers/cruzawl/blob/master/test/cruz_test.dart#L128
